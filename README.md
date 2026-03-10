@@ -57,6 +57,22 @@ Returns `proof_id`, `verification_url`, `upstream_response`, `chain_hash`, `time
 
 **Use this instead of calling the API directly** when you need an auditable record.
 
+Example response:
+
+```json
+{
+  "proof_id": "prf_20260310_143022_a1b2c3",
+  "verification_url": "https://arkforge.tech/trust/v1/proof/prf_20260310_143022_a1b2c3",
+  "upstream_response": { "status": "ok" },
+  "chain_hash": "e3b0c44298fc1c149afb...",
+  "timestamp": "2026-03-10T14:30:22.481Z",
+  "timestamp_authority": "verified",
+  "rekor_log_id": "https://rekor.sigstore.dev/api/v1/log/entries/...",
+  "seller": "api.example.com",
+  "signature": "MCowBQYDK2VwAyEA..."
+}
+```
+
 ### `get_proof`
 Retrieve the full proof bundle for a given `proof_id`.
 

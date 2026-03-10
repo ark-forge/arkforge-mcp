@@ -22,7 +22,6 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 BASE_URL = os.environ.get("ARKFORGE_BASE_URL", "https://arkforge.tech/trust").rstrip("/")
-API_KEY = os.environ.get("ARKFORGE_API_KEY", "")
 TIMEOUT = 30.0
 
 mcp = FastMCP(
@@ -40,7 +39,7 @@ mcp = FastMCP(
 
 def _headers() -> dict:
     return {
-        "X-Api-Key": API_KEY,
+        "X-Api-Key": os.environ.get("ARKFORGE_API_KEY", ""),
         "Content-Type": "application/json",
         "User-Agent": "arkforge-mcp/1.0.0",
     }
@@ -84,7 +83,7 @@ def certify_call(
         and timestamp. Share verification_url with any third party to let them
         independently verify what happened.
     """
-    if not API_KEY:
+    if not os.environ.get("ARKFORGE_API_KEY"):
         return "Error: ARKFORGE_API_KEY environment variable not set. Get a free key at arkforge.tech."
 
     if not target:
@@ -120,7 +119,7 @@ def certify_call(
             "chain_hash": proof.get("hashes", {}).get("chain"),
             "timestamp": proof.get("timestamp"),
             "timestamp_authority": proof.get("timestamp_authority", {}).get("status"),
-            "rekor_log_id": proof.get("rekor", {}).get("log_id"),
+            "rekor_log_id": proof.get("rekor", {}).get("log_url") or proof.get("rekor", {}).get("log_id"),
             "seller": proof.get("parties", {}).get("seller"),
             "signature": proof.get("arkforge_signature"),
         }
@@ -131,6 +130,22 @@ def certify_call(
         return f"Error: Request timed out after {TIMEOUT}s. The upstream API may be slow."
     except Exception as e:
         return f"Error: {e}"
+
+
+def _fetch_proof(proof_id: str):
+    """Fetch proof bundle from API. Returns (dict, None) on success or (None, error_str)."""
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            r = client.get(f"{BASE_URL}/v1/proof/{proof_id}", headers=_headers())
+        if r.status_code == 404:
+            return None, f"Proof '{proof_id}' not found."
+        if r.status_code != 200:
+            return None, _format_error(r)
+        return r.json(), None
+    except httpx.TimeoutException:
+        return None, "Error: Request timed out."
+    except Exception as e:
+        return None, f"Error: {e}"
 
 
 @mcp.tool()
@@ -146,25 +161,10 @@ def get_proof(proof_id: str) -> str:
     """
     if not proof_id:
         return "Error: 'proof_id' is required."
-
-    try:
-        with httpx.Client(timeout=TIMEOUT) as client:
-            r = client.get(
-                f"{BASE_URL}/v1/proof/{proof_id}",
-                headers=_headers(),
-            )
-
-        if r.status_code == 404:
-            return f"Proof '{proof_id}' not found."
-        if r.status_code != 200:
-            return _format_error(r)
-
-        return json.dumps(r.json(), indent=2, ensure_ascii=False)
-
-    except httpx.TimeoutException:
-        return "Error: Request timed out."
-    except Exception as e:
-        return f"Error: {e}"
+    data, err = _fetch_proof(proof_id)
+    if err:
+        return err
+    return json.dumps(data, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -181,75 +181,61 @@ def verify_proof(proof_id: str) -> str:
     if not proof_id:
         return "Error: 'proof_id' is required."
 
-    try:
-        with httpx.Client(timeout=TIMEOUT) as client:
-            r = client.get(
-                f"{BASE_URL}/v1/proof/{proof_id}",
-                headers=_headers(),
-            )
+    p, err = _fetch_proof(proof_id)
+    if err:
+        return err
 
-        if r.status_code == 404:
-            return f"Proof '{proof_id}' not found."
-        if r.status_code != 200:
-            return _format_error(r)
+    hashes = p.get("hashes", {})
+    parties = p.get("parties", {})
+    tsa = p.get("timestamp_authority", {})
+    rekor = p.get("rekor", {})
+    archive = p.get("archive_org", {})
 
-        p = r.json()
-        hashes = p.get("hashes", {})
-        parties = p.get("parties", {})
-        tsa = p.get("timestamp_authority", {})
-        rekor = p.get("rekor", {})
-        archive = p.get("archive_org", {})
+    lines = [
+        f"Proof ID: {p.get('proof_id')}",
+        f"Timestamp: {p.get('timestamp')} (UTC)",
+        f"",
+        f"What was certified:",
+        f"  - Caller fingerprint: {parties.get('buyer_fingerprint', 'N/A')[:16]}...",
+        f"  - Called API (seller): {parties.get('seller', 'N/A')}",
+    ]
+    if parties.get("agent_identity"):
+        lines.append(f"  - Agent identity: {parties['agent_identity']}")
 
-        lines = [
-            f"Proof ID: {p.get('proof_id')}",
-            f"Timestamp: {p.get('timestamp')} (UTC)",
-            f"",
-            f"What was certified:",
-            f"  - Caller fingerprint: {parties.get('buyer_fingerprint', 'N/A')[:16]}...",
-            f"  - Called API (seller): {parties.get('seller', 'N/A')}",
-        ]
-        if parties.get("agent_identity"):
-            lines.append(f"  - Agent identity: {parties['agent_identity']}")
+    lines += [
+        f"",
+        f"Integrity:",
+        f"  - Request hash:  {hashes.get('request', 'N/A')}",
+        f"  - Response hash: {hashes.get('response', 'N/A')}",
+        f"  - Chain hash:    {hashes.get('chain', 'N/A')}",
+        f"",
+        f"Independent anchoring:",
+    ]
 
-        lines += [
-            f"",
-            f"Integrity:",
-            f"  - Request hash:  {hashes.get('request', 'N/A')}",
-            f"  - Response hash: {hashes.get('response', 'N/A')}",
-            f"  - Chain hash:    {hashes.get('chain', 'N/A')}",
-            f"",
-            f"Independent anchoring:",
-        ]
+    tsa_status = tsa.get("status", "unknown")
+    tsa_provider = tsa.get("provider", "N/A")
+    lines.append(f"  - RFC 3161 timestamp ({tsa_provider}): {tsa_status}")
 
-        tsa_status = tsa.get("status", "unknown")
-        tsa_provider = tsa.get("provider", "N/A")
-        lines.append(f"  - RFC 3161 timestamp ({tsa_provider}): {tsa_status}")
+    rekor_log_url = rekor.get("log_url") or rekor.get("log_id")
+    if rekor_log_url:
+        lines.append(f"  - Sigstore Rekor: {rekor_log_url}")
+    else:
+        lines.append(f"  - Sigstore Rekor: pending")
 
-        rekor_log_url = rekor.get("log_url") or rekor.get("log_id")
-        if rekor_log_url:
-            lines.append(f"  - Sigstore Rekor: {rekor_log_url}")
-        else:
-            lines.append(f"  - Sigstore Rekor: pending")
+    if archive.get("snapshot_url"):
+        lines.append(f"  - archive.org snapshot: {archive['snapshot_url']}")
 
-        if archive.get("snapshot_url"):
-            lines.append(f"  - archive.org snapshot: {archive['snapshot_url']}")
+    verification_url = (
+        p.get("verification_url")
+        or f"{BASE_URL}/v1/proof/{p.get('proof_id')}"
+    )
+    lines += [
+        f"",
+        f"Public verification URL:",
+        f"  {verification_url}",
+    ]
 
-        verification_url = (
-            p.get("verification_url")
-            or f"{BASE_URL}/v1/proof/{p.get('proof_id')}"
-        )
-        lines += [
-            f"",
-            f"Public verification URL:",
-            f"  {verification_url}",
-        ]
-
-        return "\n".join(lines)
-
-    except httpx.TimeoutException:
-        return "Error: Request timed out."
-    except Exception as e:
-        return f"Error: {e}"
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -260,7 +246,7 @@ def get_usage() -> str:
     Returns your tier (Free / Pro / Enterprise), proofs used, proofs remaining,
     and the reset date.
     """
-    if not API_KEY:
+    if not os.environ.get("ARKFORGE_API_KEY"):
         return "Error: ARKFORGE_API_KEY environment variable not set. Get a free key at arkforge.tech."
 
     try:
