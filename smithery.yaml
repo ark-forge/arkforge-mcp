@@ -1,0 +1,48 @@
+namespace: arkforge
+name: arkforge-mcp
+displayName: "ArkForge Trust Layer"
+description: "Third-party cryptographic proof for AI agent API calls. Works with Claude, GPT-4, Mistral, LangChain, AutoGen, or any HTTP client. The proof is signed by ArkForge — not by your agent."
+version: "1.0.0"
+license: "MIT"
+homepage: "https://arkforge.tech"
+repository: "https://github.com/ark-forge/arkforge-mcp"
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      apiKey:
+        type: string
+        title: "ArkForge API Key"
+        description: "Your ArkForge API key. Get a free key (500 proofs/month) at arkforge.tech."
+    required:
+      - apiKey
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["arkforge-mcp"],
+      env: { ARKFORGE_API_KEY: config.apiKey }
+    })
+
+categories:
+  - security
+  - ai-governance
+  - compliance
+
+keywords:
+  - cryptographic proof
+  - AI agents
+  - audit trail
+  - third-party attestation
+  - eIDAS
+  - EU AI Act
+  - NIS2
+  - DORA
+  - sigstore
+  - RFC 3161
+  - trust
+
+author:
+  name: ArkForge
+  url: https://arkforge.tech
