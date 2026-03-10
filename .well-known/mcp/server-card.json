@@ -1,0 +1,22 @@
+{
+  "name": "ArkForge Trust Layer",
+  "description": "Third-party cryptographic proof for AI agent API calls. Works with Claude, GPT-4, Mistral, LangChain, AutoGen. The proof is signed by ArkForge — not by your agent.",
+  "tools": [
+    {
+      "name": "certify_call",
+      "description": "Call an external API and get a cryptographic proof of the transaction (Ed25519 signature, RFC 3161 timestamp, Sigstore Rekor)."
+    },
+    {
+      "name": "get_proof",
+      "description": "Retrieve the full cryptographic proof bundle for a given proof ID."
+    },
+    {
+      "name": "verify_proof",
+      "description": "Get a human-readable summary of what a proof certifies."
+    },
+    {
+      "name": "get_usage",
+      "description": "Check your ArkForge API usage and remaining credits for the current period."
+    }
+  ]
+}
