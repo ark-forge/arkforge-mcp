@@ -62,7 +62,7 @@ Example response:
 ```json
 {
   "proof_id": "prf_20260310_143022_a1b2c3",
-  "verification_url": "https://arkforge.tech/trust/v1/proof/prf_20260310_143022_a1b2c3",
+  "verification_url": "https://trust.arkforge.tech/v1/proof/prf_20260310_143022_a1b2c3",
   "upstream_response": { "status": "ok" },
   "chain_hash": "e3b0c44298fc1c149afb...",
   "timestamp": "2026-03-10T14:30:22.481Z",
@@ -116,7 +116,7 @@ Check your remaining credits for the current month.
 The MCP server is one integration path. The same REST API works from any language or framework:
 
 ```bash
-curl -X POST https://arkforge.tech/trust/v1/proxy \
+curl -X POST https://trust.arkforge.tech/v1/proxy \
   -H "X-Api-Key: your_key" \
   -H "Content-Type: application/json" \
   -d '{"target": "https://api.example.com/action", "payload": {"data": "value"}}'

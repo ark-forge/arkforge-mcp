@@ -11,7 +11,7 @@ Each certified call produces:
 - RFC 3161 timestamp (FreeTSA or QTSP eIDAS)
 - Sigstore Rekor immutable log entry
 - archive.org snapshot
-- Publicly verifiable at arkforge.tech/trust/v1/proof/{proof_id}
+- Publicly verifiable at trust.arkforge.tech/v1/proof/{proof_id}
 
 Get a free API key (500 proofs/month) at arkforge.tech.
 """
@@ -21,7 +21,7 @@ import json
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-BASE_URL = os.environ.get("ARKFORGE_BASE_URL", "https://arkforge.tech/trust").rstrip("/")
+BASE_URL = os.environ.get("ARKFORGE_BASE_URL", "https://trust.arkforge.tech").rstrip("/")
 TIMEOUT = 30.0
 
 mcp = FastMCP(
