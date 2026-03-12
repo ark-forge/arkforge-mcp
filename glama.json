@@ -1,4 +1,32 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["ark-forge"]
+  "maintainers": ["ark-forge"],
+  "categories": ["security", "ai-governance", "compliance"],
+  "license": "MIT",
+  "homepage": "https://arkforge.tech",
+  "repository": "https://github.com/ark-forge/arkforge-mcp",
+  "tools": [
+    {
+      "name": "certify_call",
+      "description": "Call an external API and get a cryptographic proof of the transaction. Use instead of calling the API directly when you need an auditable, tamper-evident record."
+    },
+    {
+      "name": "get_proof",
+      "description": "Retrieve the full cryptographic proof bundle for a given proof ID."
+    },
+    {
+      "name": "verify_proof",
+      "description": "Get a human-readable summary of what a proof certifies — useful for auditors."
+    },
+    {
+      "name": "get_usage",
+      "description": "Check your ArkForge API usage and remaining credits for the current period."
+    }
+  ],
+  "env": {
+    "ARKFORGE_API_KEY": {
+      "description": "Your ArkForge API key. Get a free key (500 proofs/month) at arkforge.tech.",
+      "required": true
+    }
+  }
 }
