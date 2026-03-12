@@ -1,28 +1,37 @@
 # ArkForge Trust Layer — MCP Server
 
-Third-party cryptographic proof for AI agent API calls.
+Third-party certifying proxy — get an independent cryptographic proof for any HTTP call.
 
-Works with **Claude, GPT-4, Mistral, LangChain, AutoGen**, or any HTTP client.
-The proof is signed by ArkForge (independent third party) — **not by your agent**.
+Works with **AI agents, webhooks, microservices, or any HTTP client**.
+The proof is signed by ArkForge (independent third party) — **not by the caller**.
 
 ---
 
 ## Why this matters
 
-When an AI agent calls an external API, there is no independent record of what was sent, what was received, or when it happened. The agent could lie. The API could lie. There is no verifiable audit trail.
+When a system makes an HTTP call, there is no independent record of what was sent, what was received, or when it happened. Either party could deny or alter the transaction.
 
-ArkForge fixes this by acting as a **certifying proxy**: the agent routes its API call through ArkForge, which signs the full request+response bundle with an Ed25519 key, timestamps it via RFC 3161, and anchors it in [Sigstore Rekor](https://rekor.sigstore.dev) — an immutable, publicly auditable log.
+ArkForge fixes this by acting as a **certifying proxy**: the caller routes its request through ArkForge, which signs the full request+response bundle with an Ed25519 key, timestamps it via RFC 3161, and anchors it in [Sigstore Rekor](https://rekor.sigstore.dev) — an immutable, publicly auditable log.
 
 The resulting proof is permanently verifiable at a public URL, by anyone, without contacting ArkForge.
 
-**This is the difference between a self-signed certificate and a CA-issued one.** Tools like PiQrypt or Attestix produce proofs signed by the agent itself. ArkForge produces proofs signed by an independent third party.
+**This is the difference between a self-signed certificate and a CA-issued one.** Other tools produce proofs signed by the caller itself. ArkForge produces proofs signed by an independent third party.
+
+---
+
+## Use cases
+
+- **AI agents** — audit trail for every external API call (Claude, GPT, Mistral, LangChain, AutoGen)
+- **Webhooks** — prove a Stripe or GitHub event was received with this exact payload
+- **Microservices** — tamper-evident log between internal services (compliance, fintech)
+- **Data providers** — prove an external API returned this value at this timestamp
+- **Automations** — certify an action in an n8n or Zapier workflow
 
 ---
 
 ## Installation
 
-```bash
-# Claude Desktop — add to claude_desktop_config.json:
+```json
 {
   "mcpServers": {
     "arkforge": {
@@ -43,14 +52,14 @@ Get a free API key (500 proofs/month) at [arkforge.tech](https://arkforge.tech).
 ## Tools
 
 ### `certify_call`
-Call an external API and get a cryptographic proof of the transaction.
+Route an HTTP call through ArkForge and get a cryptographic proof of the transaction.
 
 ```
 target          URL of the upstream API to call
 payload         JSON body (optional)
 method          "POST" or "GET" (default: "POST")
 description     Human-readable description included in the proof
-agent_identity  Identifier for the calling agent (optional)
+agent_identity  Identifier for the calling system (optional)
 ```
 
 Returns `proof_id`, `verification_url`, `upstream_response`, `chain_hash`, `timestamp`, and Ed25519 `signature`.
@@ -111,9 +120,9 @@ Check your remaining credits for the current month.
 
 ---
 
-## Works with any agent framework
+## REST API
 
-The MCP server is one integration path. The same REST API works from any language or framework:
+The MCP server is one integration path. The same API works from any language or framework:
 
 ```bash
 curl -X POST https://trust.arkforge.tech/v1/proxy \
