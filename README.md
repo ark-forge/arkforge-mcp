@@ -5,6 +5,10 @@ Third-party certifying proxy — get an independent cryptographic proof for any 
 Works with **AI agents, webhooks, microservices, or any HTTP client**.
 The proof is signed by ArkForge (independent third party) — **not by the caller**.
 
+<a href="https://glama.ai/mcp/servers/ark-forge/arkforge-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/ark-forge/arkforge-mcp/badge" alt="ArkForge Trust Layer MCP server" />
+</a>
+
 ---
 
 ## Why this matters
