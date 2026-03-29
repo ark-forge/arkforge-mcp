@@ -34,6 +34,7 @@ mcp = FastMCP(
         "human-readable summary of what a proof certifies. Use get_usage to check "
         "remaining credits."
     ),
+    json_response=True,
 )
 
 
