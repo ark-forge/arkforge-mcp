@@ -53,6 +53,10 @@ Get a free API key (500 proofs/month) at [arkforge.tech](https://arkforge.tech).
 
 ---
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/ark-forge-arkforge-mcp).
+
 ## Tools
 
 ### `certify_call`
