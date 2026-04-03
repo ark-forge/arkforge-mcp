@@ -13,7 +13,7 @@ Each certified call produces:
 - archive.org snapshot
 - Publicly verifiable at trust.arkforge.tech/v1/proof/{proof_id}
 
-Get a free API key (500 proofs/month) at arkforge.tech.
+Get a free API key at arkforge.tech.
 """
 
 import os
@@ -32,7 +32,8 @@ mcp = FastMCP(
         "is returned alongside the proof, so your workflow is not interrupted. "
         "Use get_proof to inspect an existing proof. Use verify_proof to get a "
         "human-readable summary of what a proof certifies. Use get_usage to check "
-        "remaining credits."
+        "remaining credits. Use assess_mcp_server to audit an MCP server's security "
+        "posture. Use compliance_report to generate an EU AI Act or ISO 42001 report."
     ),
     json_response=True,
 )
@@ -42,7 +43,7 @@ def _headers() -> dict:
     return {
         "X-Api-Key": os.environ.get("ARKFORGE_API_KEY", ""),
         "Content-Type": "application/json",
-        "User-Agent": "arkforge-mcp/1.1.0",
+        "User-Agent": "arkforge-mcp/1.2.0",
     }
 
 
@@ -53,6 +54,12 @@ def _format_error(r: httpx.Response) -> str:
         return f"Error {r.status_code}: {err.get('message', r.text[:200])}"
     except Exception:
         return f"Error {r.status_code}: {r.text[:200]}"
+
+
+def _require_key() -> str | None:
+    if not os.environ.get("ARKFORGE_API_KEY"):
+        return "Error: ARKFORGE_API_KEY environment variable not set. Get a free key at arkforge.tech."
+    return None
 
 
 @mcp.tool()
@@ -84,9 +91,8 @@ def certify_call(
         and timestamp. Share verification_url with any third party to let them
         independently verify what happened.
     """
-    if not os.environ.get("ARKFORGE_API_KEY"):
-        return "Error: ARKFORGE_API_KEY environment variable not set. Get a free key at arkforge.tech."
-
+    if err := _require_key():
+        return err
     if not target:
         return "Error: 'target' is required — provide the URL of the upstream API to call."
 
@@ -95,12 +101,8 @@ def certify_call(
         body["payload"] = payload
     if description:
         body["description"] = description
-
-    extra_headers = {}
     if agent_identity:
-        extra_headers["X-Agent-Identity"] = agent_identity
-    if extra_headers:
-        body["extra_headers"] = extra_headers
+        body["extra_headers"] = {"X-Agent-Identity": agent_identity}
 
     try:
         with httpx.Client(timeout=TIMEOUT) as client:
@@ -111,16 +113,17 @@ def certify_call(
 
         data = r.json()
         proof = data.get("proof", {})
-        service_response = data.get("service_response")
+        tlog = proof.get("transparency_log", {})
 
         result = {
             "proof_id": proof.get("proof_id"),
             "verification_url": proof.get("verification_url"),
-            "upstream_response": service_response,
+            "upstream_response": data.get("service_response"),
             "chain_hash": proof.get("hashes", {}).get("chain"),
             "timestamp": proof.get("timestamp"),
             "timestamp_authority": proof.get("timestamp_authority", {}).get("status"),
-            "rekor_log_id": proof.get("rekor", {}).get("log_url") or proof.get("rekor", {}).get("log_id"),
+            "rekor_status": tlog.get("status"),
+            "rekor_verify_url": tlog.get("verify_url"),
             "seller": proof.get("parties", {}).get("seller"),
             "signature": proof.get("arkforge_signature"),
         }
@@ -189,7 +192,7 @@ def verify_proof(proof_id: str) -> str:
     hashes = p.get("hashes", {})
     parties = p.get("parties", {})
     tsa = p.get("timestamp_authority", {})
-    rekor = p.get("rekor", {})
+    tlog = p.get("transparency_log", {})
     archive = p.get("archive_org", {})
 
     lines = [
@@ -213,23 +216,20 @@ def verify_proof(proof_id: str) -> str:
         f"Independent anchoring:",
     ]
 
-    tsa_status = tsa.get("status", "unknown")
     tsa_provider = tsa.get("provider", "N/A")
-    lines.append(f"  - RFC 3161 timestamp ({tsa_provider}): {tsa_status}")
+    lines.append(f"  - RFC 3161 timestamp ({tsa_provider}): {tsa.get('status', 'unknown')}")
 
-    rekor_log_url = rekor.get("log_url") or rekor.get("log_id")
-    if rekor_log_url:
-        lines.append(f"  - Sigstore Rekor: {rekor_log_url}")
+    if tlog.get("status") == "verified":
+        lines.append(f"  - Sigstore Rekor: verified (logIndex={tlog.get('log_index')})")
+        if tlog.get("verify_url"):
+            lines.append(f"    {tlog['verify_url']}")
     else:
-        lines.append(f"  - Sigstore Rekor: pending")
+        lines.append(f"  - Sigstore Rekor: {tlog.get('status', 'pending')}")
 
     if archive.get("snapshot_url"):
         lines.append(f"  - archive.org snapshot: {archive['snapshot_url']}")
 
-    verification_url = (
-        p.get("verification_url")
-        or f"{BASE_URL}/v1/proof/{p.get('proof_id')}"
-    )
+    verification_url = p.get("verification_url") or f"{BASE_URL}/v1/proof/{p.get('proof_id')}"
     lines += [
         f"",
         f"Public verification URL:",
@@ -247,8 +247,8 @@ def get_usage() -> str:
     Returns your tier (Free / Pro / Enterprise), proofs used, proofs remaining,
     and the reset date.
     """
-    if not os.environ.get("ARKFORGE_API_KEY"):
-        return "Error: ARKFORGE_API_KEY environment variable not set. Get a free key at arkforge.tech."
+    if err := _require_key():
+        return err
 
     try:
         with httpx.Client(timeout=TIMEOUT) as client:
@@ -268,6 +268,150 @@ def get_usage() -> str:
             lines.append("Upgrade to Pro (5000 proofs/month): https://arkforge.tech/#pricing")
 
         return "\n".join(lines)
+
+    except httpx.TimeoutException:
+        return "Error: Request timed out."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def assess_mcp_server(
+    server_id: str,
+    tools: list,
+    server_version: str = "",
+) -> str:
+    """
+    Assess an MCP server's security posture and get a certified proof of the assessment.
+
+    Analyzes the server's tool manifest for dangerous capability patterns
+    (filesystem write, code execution, env access, network), detects drift
+    from the previous baseline, and tracks version changes.
+
+    Args:
+        server_id:      Stable identifier for the MCP server (e.g. "my-mcp-server").
+        tools:          List of tool dicts with at minimum a "name" field.
+                        Optional: "description", "inputSchema", "version".
+        server_version: Optional server version string (e.g. "1.2.0").
+
+    Returns:
+        JSON with assess_id, risk_score (0-100), findings (severity, tool, message),
+        drift_detected, baseline_status, and assessed_at.
+    """
+    if err := _require_key():
+        return err
+    if not server_id:
+        return "Error: 'server_id' is required."
+    if not isinstance(tools, list):
+        return "Error: 'tools' must be a list of tool dicts."
+
+    body: dict = {"server_id": server_id, "manifest": {"tools": tools}}
+    if server_version:
+        body["server_version"] = server_version
+
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            r = client.post(f"{BASE_URL}/v1/assess", headers=_headers(), json=body)
+
+        if r.status_code != 200:
+            return _format_error(r)
+
+        data = r.json()
+        risk = data.get("risk_score", 0)
+        risk_label = "HIGH" if risk >= 70 else "MEDIUM" if risk >= 40 else "LOW" if risk >= 10 else "CLEAN"
+        findings = data.get("findings", [])
+
+        result = {
+            "assess_id": data.get("assess_id"),
+            "server_id": data.get("server_id", server_id),
+            "assessed_at": data.get("assessed_at"),
+            "risk_score": risk,
+            "risk_level": risk_label,
+            "baseline_status": data.get("baseline_status"),
+            "drift_detected": data.get("drift_detected", False),
+            "drift_summary": data.get("drift_summary"),
+            "findings_count": len(findings),
+            "findings": findings,
+        }
+
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    except httpx.TimeoutException:
+        return "Error: Request timed out."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def compliance_report(
+    date_from: str,
+    date_to: str,
+    framework: str = "eu_ai_act",
+) -> str:
+    """
+    Generate a compliance report for all proofs certified under your API key.
+
+    Aggregates proofs in the given date range and maps them to the articles
+    of the requested compliance framework.
+
+    Args:
+        date_from: ISO 8601 start date (e.g. "2026-01-01").
+        date_to:   ISO 8601 end date (e.g. "2026-12-31").
+        framework: Compliance framework — "eu_ai_act" (default) or "iso_42001".
+
+    Returns:
+        JSON with report_id, framework, proof_count, articles coverage,
+        gaps list, and summary (covered / partial / gap / not_applicable).
+    """
+    if err := _require_key():
+        return err
+    if not date_from or not date_to:
+        return "Error: 'date_from' and 'date_to' are required (ISO 8601 format)."
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            r = client.post(
+                f"{BASE_URL}/v1/compliance-report",
+                headers=_headers(),
+                json={"framework": framework, "date_from": date_from, "date_to": date_to},
+            )
+
+        if r.status_code != 200:
+            return _format_error(r)
+
+        return json.dumps(r.json(), indent=2, ensure_ascii=False)
+
+    except httpx.TimeoutException:
+        return "Error: Request timed out."
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def get_agent_reputation(agent_id: str) -> str:
+    """
+    Get the public reputation score for an agent (0-100).
+
+    The score is computed from certified proof history: success rate,
+    dispute ratio, identity consistency, and proof volume.
+
+    Args:
+        agent_id: Agent identifier (e.g. "my-agent-v1").
+
+    Returns:
+        JSON with reputation_score, scoring details, and total_proofs.
+    """
+    if not agent_id:
+        return "Error: 'agent_id' is required."
+
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            r = client.get(f"{BASE_URL}/v1/agent/{agent_id}/reputation", headers=_headers())
+
+        if r.status_code != 200:
+            return _format_error(r)
+
+        return json.dumps(r.json(), indent=2, ensure_ascii=False)
 
     except httpx.TimeoutException:
         return "Error: Request timed out."
