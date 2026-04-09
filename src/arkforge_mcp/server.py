@@ -43,7 +43,7 @@ def _headers() -> dict:
     return {
         "X-Api-Key": os.environ.get("ARKFORGE_API_KEY", ""),
         "Content-Type": "application/json",
-        "User-Agent": "arkforge-mcp/1.2.5",
+        "User-Agent": "arkforge-mcp/1.2.7",
     }
 
 

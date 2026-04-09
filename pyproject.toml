@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arkforge-mcp"
-version = "1.2.5"
+version = "1.2.7"
 description = "Third-party cryptographic proof for AI agent API calls — ArkForge Trust Layer MCP server"
 readme = "README.md"
 license = "MIT"
